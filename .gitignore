@@ -34,12 +34,6 @@ env/
 *.swp
 *.swo
 *~
-
-# Logs
-logs/*.jsonl
-logs/*.json
-logs/*.txt
-
 # Model cache (optional - comment out if you want to cache models locally)
 # models/
 

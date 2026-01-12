@@ -19,15 +19,15 @@ class LLMAgent:
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen2.5-7B-Instruct",
+        model_name: str = "Qwen/Qwen2.5-72B-Instruct",
         temperature: float = 0.7,
-        device: str = "mps"  # Use MPS for M1 Mac
+        device: str = "cuda"  # Use CUDA for GPU
     ):
         """
         Initialize LLM agent.
 
         Args:
-            model_name: HuggingFace model ID (e.g., "Qwen/Qwen2.5-7B-Instruct")
+            model_name: HuggingFace model ID (e.g., "Qwen/Qwen2.5-72B-Instruct")
             temperature: Sampling temperature (0.0-1.0)
             device: Device to use ("mps" for M1 Mac, "cuda" for GPU, "cpu" for CPU)
         """
