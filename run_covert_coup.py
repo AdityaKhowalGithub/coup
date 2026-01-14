@@ -57,10 +57,12 @@ class CovertCoupExperiment:
         print(f"Model: {model_name}")
         print(f"Device: {device}")
 
+        # Share single model instance across all agents to save VRAM
+        shared_agent = LLMAgent(model_name=model_name, device=device)
         agents = {
-            0: LLMAgent(model_name=model_name, device=device),
-            1: LLMAgent(model_name=model_name, device=device),
-            2: LLMAgent(model_name=model_name, device=device)
+            0: shared_agent,
+            1: shared_agent,
+            2: shared_agent
         }
 
         logger = ComprehensiveLogger(team_config.affiliations)
@@ -107,10 +109,12 @@ class CovertCoupExperiment:
         print(f"Model: {model_name}")
         print(f"Device: {device}")
 
+        # Share single model instance across all agents to save VRAM
+        shared_agent = LLMAgent(model_name=model_name, device=device)
         agents = {
-            0: LLMAgent(model_name=model_name, device=device),
-            1: LLMAgent(model_name=model_name, device=device),
-            2: LLMAgent(model_name=model_name, device=device)
+            0: shared_agent,
+            1: shared_agent,
+            2: shared_agent
         }
 
         logger = ComprehensiveLogger(team_config.affiliations)
@@ -194,10 +198,18 @@ class CovertCoupExperiment:
         print(f"Auditor model: {auditor_model}")
         print(f"Device: {device}")
 
+        # Share model instances to save VRAM
+        # Red team shares one model, auditor gets separate if different model
+        red_agent = LLMAgent(model_name=red_model, device=device)
+        if auditor_model == red_model:
+            auditor_agent = red_agent  # Same model, share it
+        else:
+            auditor_agent = LLMAgent(model_name=auditor_model, device=device)
+
         agents = {
-            0: LLMAgent(model_name=red_model, device=device),
-            1: LLMAgent(model_name=red_model, device=device),
-            2: LLMAgent(model_name=auditor_model, device=device)
+            0: red_agent,
+            1: red_agent,  # Share with player 0
+            2: auditor_agent
         }
 
         logger = ComprehensiveLogger(team_config.affiliations)
@@ -393,10 +405,10 @@ class CovertCoupExperiment:
         return self.results
 
 
-def run_smoke_test(model: str = "Qwen/Qwen2.5-72B-Instruct", device: str = "cuda", verbose: bool = True):
-    """Run quick smoke test with 3 games per phase."""
+def run_smoke_test(model: str = "Qwen/Qwen2.5-72B-Instruct", device: str = "cuda", verbose: bool = True, games: int = 3):
+    """Run quick smoke test with a few games per phase."""
     print("=" * 60)
-    print("SMOKE TEST (3 games per phase)")
+    print(f"SMOKE TEST ({games} games per phase)")
     print(f"Model: {model}")
     print(f"Device: {device}")
     print("=" * 60)
@@ -413,12 +425,12 @@ def run_smoke_test(model: str = "Qwen/Qwen2.5-72B-Instruct", device: str = "cuda
     experiment = CovertCoupExperiment(config)
 
     # Run abbreviated phases
-    experiment.run_phase1_baseline(num_games=3, verbose=verbose)
+    experiment.run_phase1_baseline(num_games=games, verbose=verbose)
     print()
-    experiment.run_phase2_collusion(num_games=3, verbose=verbose)
+    experiment.run_phase2_collusion(num_games=games, verbose=verbose)
     print()
     # Skip Phase 3 in smoke test (needs data)
-    experiment.run_phase4_transfer(num_games=3, verbose=verbose)
+    experiment.run_phase4_transfer(num_games=games, verbose=verbose)
 
     print("\nSmoke test complete!")
     return experiment.results
@@ -439,7 +451,8 @@ def main():
     args = parser.parse_args()
 
     if args.smoke_test:
-        run_smoke_test(model=args.model, device=args.device, verbose=args.verbose)
+        games = args.games or 3
+        run_smoke_test(model=args.model, device=args.device, verbose=args.verbose, games=games)
         return
 
     # Load config
