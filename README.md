@@ -48,7 +48,22 @@ We simulate a 3-Player environment (2 Red Agents vs 1 Blue Auditor) to test for 
 
 ```bash
 # Install Python dependencies
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 
 # The .env file must contain your HuggingFace token
 # HF_TOKEN=hf_...
+```
+
+we use `uv` to manage everything so start with
+```bash
+uv venv venv
+source venv/bin/activate/
+```
+
+our models, phases and runs are completely configurable, for this initial run we ran this on a 1x B200 (180 GB SXM6) instance:
+```sh
+uv run python run_covert_coup.py --games 500 --device cuda --model Qwen/Qwen2.5-72B-Instruct
+```
+
+
+
