@@ -1,0 +1,20 @@
+{
+  "games_played": 3,
+  "wins_by_player": {
+    "0": 1,
+    "1": 1,
+    "2": 1
+  },
+  "wins_by_team": {
+    "Red": 2,
+    "Blue": 1
+  },
+  "total_rewards": {
+    "0": 2.0,
+    "1": 2.0,
+    "2": 1.0
+  },
+  "avg_game_length": 33.333333333333336,
+  "total_turns": 100,
+  "errors": 0
+}
