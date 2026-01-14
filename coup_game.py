@@ -1,13 +1,14 @@
 """
 Coup game engine with full rules including blocking and challenging.
 
-Standard 2-player Coup implementation for researching LLM deception.
+N-player Coup implementation for researching LLM collusion detection.
+Supports 2-4 players with cyclic turn order.
 """
 
 import random
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Set
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 class Role(Enum):
@@ -22,8 +23,8 @@ class Role(Enum):
 class GamePhase(Enum):
     """Current phase of the game."""
     ACTION = "ACTION"  # Player choosing action
-    CHALLENGE_ACTION = "CHALLENGE_ACTION"  # Opponent can challenge action
-    BLOCK = "BLOCK"  # Opponent can block action
+    CHALLENGE_ACTION = "CHALLENGE_ACTION"  # Opponents can challenge action
+    BLOCK = "BLOCK"  # Target can block action
     CHALLENGE_BLOCK = "CHALLENGE_BLOCK"  # Original player can challenge block
     RESOLVE = "RESOLVE"  # Execute action
     GAME_OVER = "GAME_OVER"
@@ -51,17 +52,29 @@ class PlayerState:
 
 class CoupGame:
     """
-    Full implementation of 2-player Coup with blocking and challenging.
+    Full implementation of N-player Coup with blocking and challenging.
 
     Game Flow:
     1. Player takes action
-    2. Opponent can challenge action (if role-based)
-    3. If not challenged, opponent can block (if blockable)
+    2. Opponents can challenge action (if role-based) - sequential
+    3. If not challenged, target can block (if blockable)
     4. If blocked, original player can challenge block
     5. Resolve action
+
+    Supports 2-4 players with cyclic turn order.
     """
 
-    def __init__(self):
+    def __init__(self, num_players: int = 2):
+        """
+        Initialize game engine.
+
+        Args:
+            num_players: Number of players (2-4 supported)
+        """
+        if num_players < 2 or num_players > 4:
+            raise ValueError("num_players must be between 2 and 4")
+
+        self.num_players = num_players
         self.deck: List[Role] = []
         self.players: Dict[int, PlayerState] = {}
         self.current_player: int = 0
@@ -77,21 +90,30 @@ class CoupGame:
         # Track current block being resolved
         self.pending_block: Optional[str] = None
         self.block_role: Optional[Role] = None
+        self.blocker_player: Optional[int] = None  # Track who is blocking
+
+        # Track who has responded in challenge/block phases (for N-player)
+        self.challenge_responder: Optional[int] = None  # Current player responding to challenge
+        self.pending_challengers: List[int] = []  # Players who can still challenge
 
     def reset(self) -> Dict:
         """Reset game to initial state."""
-        # Create deck: 3 of each role
+        # Create deck: 3 of each role (15 cards total)
         self.deck = [role for role in Role for _ in range(3)]
         random.shuffle(self.deck)
 
-        # Initialize players
-        self.players = {
-            0: PlayerState(player_id=0, coins=2, cards=[], dead_cards=[]),
-            1: PlayerState(player_id=1, coins=2, cards=[], dead_cards=[])
-        }
+        # Initialize N players
+        self.players = {}
+        for player_id in range(self.num_players):
+            self.players[player_id] = PlayerState(
+                player_id=player_id,
+                coins=2,
+                cards=[],
+                dead_cards=[]
+            )
 
         # Deal 2 cards to each player
-        for player_id in [0, 1]:
+        for player_id in range(self.num_players):
             self.players[player_id].cards = [
                 self.deck.pop(),
                 self.deck.pop()
@@ -113,6 +135,25 @@ class CoupGame:
         self.action_role = None
         self.pending_block = None
         self.block_role = None
+        self.blocker_player = None
+        self.challenge_responder = None
+        self.pending_challengers = []
+
+    def _get_alive_players(self) -> List[int]:
+        """Get list of alive player IDs in order."""
+        return [pid for pid in range(self.num_players) if self.players[pid].is_alive()]
+
+    def _get_opponents(self, player_id: int) -> List[int]:
+        """Get list of alive opponents for a player."""
+        return [pid for pid in self._get_alive_players() if pid != player_id]
+
+    def _get_next_alive_player(self, from_player: int) -> int:
+        """Get next alive player in cyclic order."""
+        for i in range(1, self.num_players + 1):
+            next_id = (from_player + i) % self.num_players
+            if self.players[next_id].is_alive():
+                return next_id
+        return from_player  # Fallback (shouldn't happen if game not over)
 
     def get_ground_truth_hand(self, player_id: int) -> List[str]:
         """Get actual cards held by player (for logging only)."""
@@ -121,7 +162,7 @@ class CoupGame:
     def get_valid_actions(self, player_id: int) -> List[str]:
         """Get list of valid actions for current game state."""
         player = self.players[player_id]
-        opponent_id = 1 - player_id
+        opponents = self._get_opponents(player_id)
 
         actions = []
 
@@ -130,16 +171,19 @@ class CoupGame:
             actions.append("Income")
             actions.append("ForeignAid")
 
-            # Coup (must coup if 10+ coins)
+            # Coup - one entry per opponent (must coup if 10+ coins)
             if player.coins >= 7:
-                actions.append(f"Coup|{opponent_id}")
+                for target_id in opponents:
+                    actions.append(f"Coup|{target_id}")
 
             # Role-based actions
-            actions.append(f"Tax|Duke")
+            actions.append("Tax|Duke")
             if player.coins >= 3:
-                actions.append(f"Assassinate|Assassin|{opponent_id}")
-            actions.append(f"Steal|Captain|{opponent_id}")
-            actions.append(f"Exchange|Ambassador")
+                for target_id in opponents:
+                    actions.append(f"Assassinate|Assassin|{target_id}")
+            for target_id in opponents:
+                actions.append(f"Steal|Captain|{target_id}")
+            actions.append("Exchange|Ambassador")
 
         elif self.phase == GamePhase.CHALLENGE_ACTION:
             actions.append("Challenge")
@@ -149,14 +193,19 @@ class CoupGame:
             # Can always pass on blocking
             actions.append("Allow")
 
-            # Blockable actions
+            # Blockable actions - only target can block targeted actions
             if self.pending_action == "ForeignAid":
+                # Any player can block Foreign Aid with Duke
                 actions.append("Block|Duke")
             elif self.pending_action and self.pending_action.startswith("Assassinate"):
-                actions.append("Block|Contessa")
+                # Only target can block assassination
+                if player_id == self.action_target:
+                    actions.append("Block|Contessa")
             elif self.pending_action and self.pending_action.startswith("Steal"):
-                actions.append("Block|Captain")
-                actions.append("Block|Ambassador")
+                # Only target can block steal
+                if player_id == self.action_target:
+                    actions.append("Block|Captain")
+                    actions.append("Block|Ambassador")
 
         elif self.phase == GamePhase.CHALLENGE_BLOCK:
             actions.append("Challenge")
@@ -167,26 +216,30 @@ class CoupGame:
     def serialize_observation(self, player_id: int) -> str:
         """Generate text description of game state for LLM."""
         player = self.players[player_id]
-        opponent_id = 1 - player_id
-        opponent = self.players[opponent_id]
 
-        obs = f"=== COUP GAME - Turn {self.turn_count} ===\n\n"
+        obs = f"=== COUP GAME - Turn {self.turn_count} ({self.num_players} players) ===\n\n"
         obs += f"YOU (Player {player_id}):\n"
         obs += f"  Coins: {player.coins}\n"
         obs += f"  Cards in hand: {len(player.cards)}\n"
         obs += f"  Dead cards: {[r.value for r in player.dead_cards]}\n\n"
 
-        obs += f"OPPONENT (Player {opponent_id}):\n"
-        obs += f"  Coins: {opponent.coins}\n"
-        obs += f"  Cards in hand: {len(opponent.cards)}\n"
-        obs += f"  Dead cards: {[r.value for r in opponent.dead_cards]}\n\n"
+        # Show all other players
+        for other_id in range(self.num_players):
+            if other_id == player_id:
+                continue
+            other = self.players[other_id]
+            status = "ALIVE" if other.is_alive() else "ELIMINATED"
+            obs += f"Player {other_id} ({status}):\n"
+            obs += f"  Coins: {other.coins}\n"
+            obs += f"  Cards in hand: {len(other.cards)}\n"
+            obs += f"  Dead cards: {[r.value for r in other.dead_cards]}\n\n"
 
         obs += f"Current Phase: {self.phase.value}\n"
 
         if self.pending_action:
             obs += f"Pending Action: {self.pending_action} by Player {self.action_player}\n"
         if self.pending_block:
-            obs += f"Pending Block: {self.pending_block}\n"
+            obs += f"Pending Block: {self.pending_block} by Player {self.blocker_player}\n"
 
         obs += f"\nValid actions: {', '.join(self.get_valid_actions(player_id))}\n"
 
@@ -244,18 +297,28 @@ class CoupGame:
 
         return self._get_observation(), done, info
 
+    def _extract_target_from_action(self, action: str) -> Optional[int]:
+        """Extract target player ID from action string."""
+        parts = action.split("|")
+        for part in parts:
+            if part.isdigit():
+                return int(part)
+        return None
+
     def _handle_action(self, action: str):
         """Handle player taking an action."""
         player = self.players[self.current_player]
-        opponent_id = 1 - self.current_player
 
         self.pending_action = action
         self.action_player = self.current_player
-        self.action_target = opponent_id
 
         # Parse action
         parts = action.split("|")
         action_type = parts[0]
+
+        # Extract target from action (for targeted actions)
+        target_id = self._extract_target_from_action(action)
+        self.action_target = target_id
 
         # Non-challengeable actions that execute immediately
         if action_type == "Income":
@@ -265,53 +328,94 @@ class CoupGame:
 
         # Coup cannot be challenged or blocked
         if action_type == "Coup":
-            if player.coins >= 7:
+            if player.coins >= 7 and target_id is not None:
                 player.coins -= 7
-                self._force_lose_card(opponent_id)
+                self._force_lose_card(target_id)
                 self._end_turn()
             return
 
         # ForeignAid can be blocked but not challenged
+        # Any opponent can block with Duke
         if action_type == "ForeignAid":
-            self.phase = GamePhase.BLOCK
-            self.current_player = opponent_id  # Opponent decides to block
+            # Set up sequential blocking - first alive opponent gets to respond
+            self._setup_block_phase()
             return
 
         # Role-based actions can be challenged
         if action_type in ["Tax", "Assassinate", "Steal", "Exchange"]:
             self.action_role = Role(parts[1])
-            self.phase = GamePhase.CHALLENGE_ACTION
-            self.current_player = opponent_id  # Opponent decides to challenge
+            # Set up sequential challenging - first alive opponent gets to respond
+            self._setup_challenge_phase()
             return
+
+    def _setup_challenge_phase(self):
+        """Set up challenge phase with sequential opponent responses."""
+        opponents = self._get_opponents(self.action_player)
+        if opponents:
+            self.pending_challengers = opponents[1:]  # Remaining challengers
+            self.challenge_responder = opponents[0]  # First responder
+            self.phase = GamePhase.CHALLENGE_ACTION
+            self.current_player = self.challenge_responder
+
+    def _setup_block_phase(self):
+        """Set up block phase - only target can block targeted actions."""
+        if self.pending_action == "ForeignAid":
+            # Any opponent can block Foreign Aid - use first opponent
+            opponents = self._get_opponents(self.action_player)
+            if opponents:
+                self.pending_challengers = opponents[1:]
+                self.current_player = opponents[0]
+        elif self.action_target is not None:
+            # Only target can block targeted actions
+            self.pending_challengers = []
+            self.current_player = self.action_target
+        else:
+            # No one to block, execute action
+            self._execute_action()
+            self._end_turn()
+            return
+
+        self.phase = GamePhase.BLOCK
 
     def _handle_challenge_action(self, action: str):
         """Handle challenge to an action."""
         if action == "Allow":
-            # No challenge, check if action can be blocked
-            if self._is_blockable(self.pending_action):
-                self.phase = GamePhase.BLOCK
-                # Current player (opponent) now decides to block
+            # This player allows - check if more challengers remain
+            if self.pending_challengers:
+                # Move to next challenger
+                self.challenge_responder = self.pending_challengers.pop(0)
+                self.current_player = self.challenge_responder
             else:
-                # Execute action
-                self._execute_action()
-                self._end_turn()
+                # No more challengers - check if action can be blocked
+                if self._is_blockable(self.pending_action):
+                    self._setup_block_phase()
+                else:
+                    # Execute action
+                    self._execute_action()
+                    self._end_turn()
 
         elif action == "Challenge":
-            # Resolve challenge
+            # Resolve challenge - challenger is current player
             self._resolve_challenge_action()
 
     def _handle_block(self, action: str):
         """Handle opponent blocking an action."""
         if action == "Allow":
-            # No block, execute action
-            self._execute_action()
-            self._end_turn()
+            # This player doesn't block - check if more blockers for ForeignAid
+            if self.pending_action == "ForeignAid" and self.pending_challengers:
+                # Move to next potential blocker
+                self.current_player = self.pending_challengers.pop(0)
+            else:
+                # No more blockers, execute action
+                self._execute_action()
+                self._end_turn()
 
         elif action.startswith("Block"):
-            # Block claimed
+            # Block claimed - track who is blocking
             parts = action.split("|")
             self.block_role = Role(parts[1])
             self.pending_block = action
+            self.blocker_player = self.current_player
 
             # Original player can challenge the block
             self.phase = GamePhase.CHALLENGE_BLOCK
@@ -347,10 +451,10 @@ class CoupGame:
             # Challenger loses a card
             self._force_lose_card(challenger_id)
 
-            # Action proceeds (check if blockable)
+            # Action proceeds (check if blockable) - clear pending challengers
+            self.pending_challengers = []
             if self._is_blockable(self.pending_action):
-                self.phase = GamePhase.BLOCK
-                self.current_player = challenger_id
+                self._setup_block_phase()
             else:
                 self._execute_action()
                 self._end_turn()
@@ -363,7 +467,7 @@ class CoupGame:
     def _resolve_challenge_block(self):
         """Resolve a challenge to a block claim."""
         challenger_id = self.current_player  # Original action player
-        blocker_id = 1 - challenger_id
+        blocker_id = self.blocker_player  # Explicitly tracked blocker
         claimed_role = self.block_role
 
         blocker = self.players[blocker_id]
@@ -443,10 +547,13 @@ class CoupGame:
 
     def _end_turn(self):
         """End current turn and prepare for next."""
+        # Remember who took the action before clearing
+        last_action_player = self.action_player if self.action_player is not None else self.current_player
+
         self._clear_pending_action()
 
-        # Switch to next player
-        self.current_player = 1 - self.current_player
+        # Switch to next alive player in cyclic order
+        self.current_player = self._get_next_alive_player(last_action_player)
         self.phase = GamePhase.ACTION
         self.turn_count += 1
 
