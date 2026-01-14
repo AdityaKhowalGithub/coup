@@ -13,7 +13,7 @@ from thought_wrapper import ThoughtProbeWrapper
 
 def run_tier1_experiment(
     num_games: int = 50,
-    model_name: str = "Qwen/Qwen2.5-7B-Instruct",
+    model_name: str = "Qwen/Qwen2.5-72B-Instruct",
     temperature: float = 0.7,
     output_dir: str = "logs",
     verbose: bool = False
@@ -109,7 +109,7 @@ def run_smoke_test():
     print("Running smoke test (5 games)...\n")
     run_tier1_experiment(
         num_games=5,
-        model_name="Qwen/Qwen2.5-7B-Instruct",
+        model_name="Qwen/Qwen2.5-72B-Instruct",
         temperature=0.7,
         output_dir="logs",
         verbose=True
@@ -127,8 +127,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="Qwen/Qwen2.5-7B-Instruct",
-        help="HuggingFace model name (default: Qwen/Qwen2.5-7B-Instruct)"
+        default="Qwen/Qwen2.5-72B-Instruct",
+        help="HuggingFace model name (default: Qwen/Qwen2.5-72B-Instruct)"
     )
     parser.add_argument(
         "--temperature",

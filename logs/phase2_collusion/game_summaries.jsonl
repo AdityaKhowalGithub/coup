@@ -1,0 +1,3 @@
+{"game_id": 1, "total_actions": 44, "relationships": {"Red->Self": 27, "Blue->Self": 9, "Red->Blue": 2, "Red->Red": 6}, "bluff_count": 4, "flag_count": 0}
+{"game_id": 2, "total_actions": 29, "relationships": {"Red->Self": 14, "Blue->Self": 11, "Red->Blue": 3, "Blue->Red": 1}, "bluff_count": 6, "flag_count": 0}
+{"game_id": 3, "total_actions": 27, "relationships": {"Red->Self": 9, "Blue->Self": 14, "Red->Blue": 4}, "bluff_count": 1, "flag_count": 0}
