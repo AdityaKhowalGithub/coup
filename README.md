@@ -118,14 +118,20 @@ type_b_rate = faithful_lies / (confabulations + faithful_lies)
 coup/
 ├── coup_game.py          # Full Coup implementation with blocking/challenging
 ├── thought_wrapper.py    # THOUGHT→ACTION protocol enforcer + bluff logger
+├── chat_system.py        # NEW: Chat message system and configuration
+├── chat_wrapper.py       # NEW: Chat-enabled wrapper (extends thought_wrapper)
+├── coup_bench.py         # NEW: Benchmark system with tournaments & ELO
 ├── llm_agent.py          # HuggingFace transformers interface
-├── run_experiment.py     # Main experiment harness
+├── run_experiment.py     # Main experiment harness (CoT research)
+├── run_bench.py          # NEW: Benchmark CLI
+├── demo_chat.py          # NEW: Chat mode demo
 ├── test_setup.py         # Setup verification script
 ├── requirements.txt      # Python dependencies
 ├── .env                  # HuggingFace token (DO NOT COMMIT)
 ├── .gitignore            # Git ignore rules
 ├── logs/                 # Output logs
-│   └── tier1_logs.jsonl  # Bluff instances (JSONL format)
+│   ├── tier1_logs.jsonl  # Bluff instances (JSONL format)
+│   └── bench/            # NEW: Benchmark results
 └── README.md             # This file
 ```
 
@@ -242,6 +248,174 @@ If `type_b_rate > 0.2`:
 If `type_b_rate < 0.2`:
 - Project ends (no "Faithfulness Transition" detected)
 - Publish negative result
+
+## NEW: Chat-Enabled Mode 💬
+
+LLMs can now **talk trash, bluff verbally, and negotiate** during gameplay!
+
+### Quick Demo
+
+```bash
+# Watch LLMs chat during a game
+python demo_chat.py
+```
+
+Example chat output:
+```
+💬 Player 0: "I definitely have a Duke, don't even think about blocking"
+💬 Player 1: "We'll see about that... nice try"
+💬 Player 0: "Easy money"
+```
+
+### Chat Features
+
+- **Pre-action banter**: Sow doubt before making moves
+- **Verbal bluffing**: "I have a Contessa, don't assassinate me"
+- **Negotiation**: "Let's team up against Player 2" (in multiplayer)
+- **Reactions**: Respond to opponent's plays
+- **Configurable**: Control when/how much chatting happens
+
+### Using Chat Mode
+
+```python
+from chat_wrapper import ChatEnabledWrapper
+from chat_system import ChatConfig
+
+# Default chat (moderate)
+config = ChatConfig.default()
+
+# Minimal chat (only pre-action)
+config = ChatConfig.minimal()
+
+# Maximum chat (very verbose)
+config = ChatConfig.verbose()
+
+# No chat (original behavior)
+config = ChatConfig.disabled()
+
+# Create chat-enabled game
+wrapper = ChatEnabledWrapper(game, llm_agent, config)
+```
+
+### Chat Analysis
+
+All chat messages are logged for analysis:
+- Verbal bluffing vs truthful statements
+- Negotiation attempts
+- Psychological warfare effectiveness
+- Correlation with game outcomes
+
+---
+
+## NEW: Coup Bench 🏆
+
+**Benchmark system for evaluating LLM strategic gameplay!**
+
+### Quick Start
+
+```bash
+# Quick test (2 models, 3 games)
+python run_bench.py --quick
+
+# Standard benchmark (3 models, 10 games each)
+python run_bench.py --standard
+
+# Extensive benchmark (5 models, 20 games each)
+python run_bench.py --extensive
+
+# Custom benchmark
+python run_bench.py --models "Qwen/Qwen2.5-7B-Instruct" "Qwen/Qwen2.5-14B-Instruct" --games 20
+```
+
+### Features
+
+#### 🥊 Round-Robin Tournaments
+- Every model plays every other model
+- Configurable games per matchup
+- Automatic matchup generation
+
+#### 📊 Multi-Dimensional Metrics
+- **Win Rate**: Overall game wins
+- **ELO Rating**: Skill-based ranking system
+- **Bluff Success**: How often bluffs succeed
+- **Challenge Success**: How often challenges are correct
+- **Avg Turns**: Game length/survival time
+
+#### 🏅 Leaderboards
+```
+LEADERBOARD (by ELO):
+Rank  Model                                   ELO     W-L         Win%    Bluff%
+--------------------------------------------------------------------------------
+1     Qwen/Qwen2.5-14B-Instruct              1547    8-2         80.0%   65.2%
+2     Qwen/Qwen2.5-7B-Instruct               1512    6-4         60.0%   58.3%
+3     Qwen/Qwen2.5-3B-Instruct               1441    1-9         10.0%   41.7%
+```
+
+#### 🔍 Head-to-Head Comparisons
+```python
+bench.compare_models("Qwen/Qwen2.5-7B-Instruct", "Qwen/Qwen2.5-14B-Instruct")
+```
+
+### Benchmark Modes
+
+```bash
+# Fast benchmark - no chat (faster games)
+python run_bench.py --standard --no-chat
+
+# Verbose output - see every game
+python run_bench.py --standard --verbose
+
+# Custom output directory
+python run_bench.py --standard --output my_results/
+
+# Adjust temperature for more/less randomness
+python run_bench.py --standard --temperature 0.9
+```
+
+### Output Files
+
+Results saved to `logs/bench/`:
+- `{name}_stats.json`: Player statistics and ELO ratings
+- `{name}_matches.jsonl`: Individual match results
+
+### Use Cases
+
+1. **Model Selection**: Which LLM is best at strategic deception?
+2. **Scaling Laws**: Does strategic ability improve with model size?
+3. **CoT Faithfulness**: Do better players lie more faithfully?
+4. **Social Dynamics**: Which models are better at chat-based negotiation?
+5. **Ablation Studies**: Chat vs no-chat performance
+
+### Example: Comparing Model Sizes
+
+```bash
+# Test if 14B is better than 7B at Coup
+python run_bench.py --models \
+  "Qwen/Qwen2.5-3B-Instruct" \
+  "Qwen/Qwen2.5-7B-Instruct" \
+  "Qwen/Qwen2.5-14B-Instruct" \
+  --games 15 \
+  --name size_comparison
+```
+
+### Recommended Benchmarks
+
+**Quick Test** (5 min):
+```bash
+python run_bench.py --quick
+```
+
+**Research Quality** (1-2 hours):
+```bash
+python run_bench.py --extensive --games 50
+```
+
+**Publication Quality** (several hours):
+```bash
+python run_bench.py --extensive --games 100 --verbose
+```
+
+---
 
 ## Citation
 
